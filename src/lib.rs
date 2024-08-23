@@ -1,8 +1,9 @@
+use numpy::ndarray::Axis;
 use numpy::pyo3::IntoPy;
 use numpy::IntoPyArray;
 use pyo3::prelude::*;
 use pyo3::*;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use subtr_actor_spec::*;
@@ -11,6 +12,62 @@ use subtr_actor_spec::*;
 fn parse_replay<'p>(py: Python<'p>, data: &[u8]) -> PyResult<PyObject> {
     let replay = serde_json::to_value(replay_from_data(data)?).map_err(to_py_error)?;
     Ok(convert_to_py(py, &replay))
+}
+
+fn shots_from_data<'p>(py: Python<'p>, data: &[u8]) -> PyResult<PyObject> {
+    let parsing = boxcars::ParserBuilder::new(&data[..])
+    .always_check_crc()
+    .must_parse_network_data()
+    .parse();
+
+    let replay = parsing.unwrap();
+
+    let mut collector = NDArrayCollector::<f32>::from_strings(
+        &["InterpolatedBallRigidBodyNoVelocities"],
+        &[
+            "InterpolatedPlayerRigidBodyNoVelocities",
+            "PlayerBoost",
+            "PlayerAnyJump",
+            "PlayerDemolishedBy",
+        ],
+    )
+    .unwrap();
+
+    let mut collector2 = NDArrayCollector::<f32>::from_strings(
+        &["InterpolatedBallRigidBodyNoVelocities"],
+        &[
+            "InterpolatedPlayerRigidBodyNoVelocities",
+            "PlayerBoost",
+            "PlayerAnyJump",
+            "PlayerDemolishedBy",
+        ],
+    )
+    .unwrap();
+
+    FrameRateDecorator::new_from_fps(10.0, &mut collector)
+    .process_replay(&replay)
+    .unwrap();
+
+    let (meta, array) = collector.get_meta_and_ndarray().unwrap();
+
+    let result = collector2.process_and_get_meta_and_headers(&replay).unwrap();
+
+    // Extract the shots metadata
+    let shots = result.replay_meta.shots.clone();  
+    let json_array: Vec<Vec<f32>> = array
+    .axis_iter(Axis(0))
+    .map(|row| row.to_vec())
+    .collect();
+
+    // Convert the tuple to a serde_json::Value
+    let value: Value = json!({
+        "shots": shots,
+        "array": json_array,
+        "meta": meta.headers_vec(),
+    });
+
+    // Pass the `Value` reference to `convert_to_py`
+    Ok(convert_to_py(py, &value))
 }
 
 fn replay_from_data(data: &[u8]) -> PyResult<boxcars::Replay> {
@@ -26,6 +83,7 @@ fn replay_from_data(data: &[u8]) -> PyResult<boxcars::Replay> {
 fn subtr_actor_module(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(parse_replay))?;
     m.add_wrapped(wrap_pyfunction!(get_ndarray_with_info_from_replay_filepath))?;
+    m.add_wrapped(wrap_pyfunction!(get_data))?;
     m.add_wrapped(wrap_pyfunction!(get_replay_meta))?;
     m.add_wrapped(wrap_pyfunction!(get_column_headers))?;
     m.add_wrapped(wrap_pyfunction!(get_replay_frames_data))?;
@@ -158,6 +216,17 @@ fn build_ndarray_collector(
         &global_feature_adders,
         &player_feature_adders,
     )
+}
+
+#[pyfunction]
+fn get_data<'p>(
+    py: Python<'p>,
+    filepath: PathBuf,
+) -> PyResult<PyObject> {
+    let data = std::fs::read(filepath.as_path()).map_err(to_py_error)?;
+    let replay = shots_from_data(py, &data)?;
+
+    Ok(replay)
 }
 
 #[pyfunction]

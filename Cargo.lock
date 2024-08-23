@@ -452,7 +452,7 @@ checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
 
 [[package]]
 name = "subtr-actor-py-spec"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "boxcars",
  "numpy",
@@ -463,9 +463,9 @@ dependencies = [
 
 [[package]]
 name = "subtr-actor-spec"
-version = "0.0.2"
+version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "126c678897583ec7ee916c218ec88e3e4214e730898f68df1847cd0f402aa15b"
+checksum = "e608f31a0ea00602dd1299bef975b85aa9bd0015674c924373f3ec51608781ec"
 dependencies = [
  "anyhow",
  "boxcars",
