@@ -14,7 +14,7 @@ fn parse_replay<'p>(py: Python<'p>, data: &[u8]) -> PyResult<PyObject> {
     Ok(convert_to_py(py, &replay))
 }
 
-fn shots_from_data<'p>(py: Python<'p>, data: &[u8]) -> PyResult<PyObject> {
+fn shots_from_data<'p>(data: &[u8]) -> SubtrActorResult<(Vec<ShotMetadata>, Vec<Vec<f32>>, Vec<String>)> {
     let parsing = boxcars::ParserBuilder::new(&data[..])
     .always_check_crc()
     .must_parse_network_data()
@@ -59,15 +59,8 @@ fn shots_from_data<'p>(py: Python<'p>, data: &[u8]) -> PyResult<PyObject> {
     .map(|row| row.to_vec())
     .collect();
 
-    // Convert the tuple to a serde_json::Value
-    let value: Value = json!({
-        "shots": shots,
-        "array": json_array,
-        "meta": meta.headers_vec(),
-    });
-
     // Pass the `Value` reference to `convert_to_py`
-    Ok(convert_to_py(py, &value))
+    Ok((shots, json_array, meta.headers_vec()))
 }
 
 fn replay_from_data(data: &[u8]) -> PyResult<boxcars::Replay> {
@@ -224,9 +217,19 @@ fn get_data<'p>(
     filepath: PathBuf,
 ) -> PyResult<PyObject> {
     let data = std::fs::read(filepath.as_path()).map_err(to_py_error)?;
-    let replay = shots_from_data(py, &data)?;
+    let replay = shots_from_data(&data);
 
-    Ok(replay)
+    let (shots, array, headers) = replay.map_err(handle_frames_exception)?;
+
+    
+    Ok(convert_to_py(
+        py,
+        &serde_json::to_value(&json!({
+            "shots": shots,
+            "array": array,
+            "headers": headers,
+        }),).map_err(to_py_error)?,
+    ))
 }
 
 #[pyfunction]
