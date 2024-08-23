@@ -235,14 +235,10 @@ fn get_data<'p>(
 
     let (shots, array, headers) = replay;
 
-    let py_shots: Vec<PyObject> = shots.iter()
-    .map(|shot| shot_to_py_obj(py, shot))
-    .collect();
-
     let py_array = array.into_py(py);
     let py_headers = headers.into_py(py);
 
-    Ok((py_shots, py_array, py_headers).into_py(py))
+    Ok((py_array, py_headers).into_py(py))
 }
 
 #[pyfunction]
