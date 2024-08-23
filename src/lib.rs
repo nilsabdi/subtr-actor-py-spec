@@ -4,6 +4,7 @@ use numpy::IntoPyArray;
 use pyo3::prelude::*;
 use pyo3::*;
 use serde_json::{json, Value};
+use types::PyDict;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use subtr_actor_spec::*;
@@ -211,25 +212,37 @@ fn build_ndarray_collector(
     )
 }
 
+fn shot_to_py_obj(py: Python, shot: &ShotMetadata) -> PyObject {
+    let shot_dict = PyDict::new(py);
+
+    shot_dict.set_item("shooter", shot.shooter.clone()).unwrap();
+    shot_dict.set_item("frame", shot.frame).unwrap();
+    shot_dict.set_item("ball_position", shot.ball_position).unwrap();
+    shot_dict.set_item("ball_linear_velocity", shot.ball_linear_velocity).unwrap();
+    shot_dict.set_item("ball_angular_velocity", shot.ball_angular_velocity).unwrap();
+
+    shot_dict.into_py(py)
+}
+
 #[pyfunction]
 fn get_data<'p>(
     py: Python<'p>,
     filepath: PathBuf,
 ) -> PyResult<PyObject> {
     let data = std::fs::read(filepath.as_path()).map_err(to_py_error)?;
-    let replay = shots_from_data(&data);
 
-    let (shots, array, headers) = replay.map_err(handle_frames_exception)?;
+    let replay: (Vec<ShotMetadata>, Vec<Vec<f32>>, Vec<String>) = shots_from_data(&data).map_err(handle_frames_exception)?;
 
-    
-    Ok(convert_to_py(
-        py,
-        &serde_json::to_value(&json!({
-            "shots": shots,
-            "array": array,
-            "headers": headers,
-        }),).map_err(to_py_error)?,
-    ))
+    let (shots, array, headers) = replay;
+
+    let py_shots: Vec<PyObject> = shots.iter()
+    .map(|shot| shot_to_py_obj(py, shot))
+    .collect();
+
+    let py_array = array.into_py(py);
+    let py_headers = headers.into_py(py);
+
+    Ok((py_shots, py_array, py_headers).into_py(py))
 }
 
 #[pyfunction]
